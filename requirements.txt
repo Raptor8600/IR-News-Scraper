@@ -1,0 +1,11 @@
+flask
+flask-cors
+requests
+beautifulsoup4
+googlesearch-python
+dateparser
+python-dateutil
+urllib3
+streamlit
+pandas
+

@@ -1,0 +1,9 @@
+@echo off
+cd /d "%~dp0"
+echo Starting IR News Scraper...
+echo Installing dependencies...
+python -m pip install flask flask-cors requests beautifulsoup4 googlesearch-python dateparser
+echo Starting server...
+start http://127.0.0.1:5000
+python app.py
+pause
