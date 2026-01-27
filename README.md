@@ -9,16 +9,12 @@ Discover Investor Relations news, analyst updates, and market sentiment in one l
 - **Smart Timeframes**: Filter news by the last 24 hours up to the last 6 months.
 - **Lightning Speed**: Parallel "hunting" engine delivers results in seconds.
 
-## WEBSITE / URL for program
-https://ir-news-scraper-gqkjsrmwh96uw3kyacip94.streamlit.app/
-
 ## 🚀 How to Run (Local Dashboard)
-If you want to run this professional tool on your own Windows computer:
-1. **Download the Code**: Click the green **"<> Code"** button at the top of this page and select **"Download ZIP"**.
-2. **Extract**: Unzip the folder to your desktop.
-3. **Launch**: Double-click the **`run_scraper.bat`** file inside.
-4. **Use**: Open your browser to `http://127.0.0.1:5000`.
-   - *Note: Keep the black command window open while using the app!*
+If you prefer to run this on your own computer:
+1. **Download** this folder.
+2. **Double-click** `run_scraper.bat`.
+3. **Open** `http://127.0.0.1:5000` in your browser.
+4. Keep the black command window open while using the app!
 
 ## 🛡️ Reliability & Privacy
 - **Source Badges**: Every news item is labeled so you know exactly where the data came from (Yahoo Aggregate, Reddit, or Official IR).
@@ -34,4 +30,3 @@ If you want to run this professional tool on your own Windows computer:
 
 ---
 *Powered by **The Raptor** 🦅*
-

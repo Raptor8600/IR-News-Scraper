@@ -8,4 +8,5 @@ python-dateutil
 urllib3
 streamlit
 pandas
+rapidfuzz
 
