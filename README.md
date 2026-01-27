@@ -9,6 +9,9 @@ Discover Investor Relations news, analyst updates, and market sentiment in one l
 - **Smart Timeframes**: Filter news by the last 24 hours up to the last 6 months.
 - **Lightning Speed**: Parallel "hunting" engine delivers results in seconds.
 
+# Website / URL
+https://ir-news-scraper-gqkjsrmwh96uw3kyacip94.streamlit.app/
+
 ## 🚀 How to Run (Local Dashboard)
 If you prefer to run this on your own computer:
 1. **Download** this folder.
@@ -30,3 +33,4 @@ If you prefer to run this on your own computer:
 
 ---
 *Powered by **The Raptor** 🦅*
+
