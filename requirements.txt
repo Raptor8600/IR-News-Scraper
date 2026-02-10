@@ -1,12 +1,9 @@
-flask
-flask-cors
+
+streamlit
 requests
 beautifulsoup4
 googlesearch-python
 dateparser
 python-dateutil
-urllib3
-streamlit
 pandas
 rapidfuzz
-

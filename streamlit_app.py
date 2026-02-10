@@ -3,6 +3,7 @@ import streamlit as st
 import scout
 from datetime import datetime
 import pandas as pd
+import requests
 
 # Page Config
 st.set_page_config(page_title="IR News Scraper", page_icon="🦅", layout="wide")
@@ -26,15 +27,16 @@ st.subheader("Discover Investor Relations news without the noise. Created by Rap
 # Sidebar Controls
 with st.sidebar:
     st.header("🦅 Raptor Controls")
-    tickers_input = st.text_input("🎯 Target Tickers", placeholder="NVDA, AMD, PETV", help="Max 5 tickers.")
+    tickers_input = st.text_input("🎯 Target Tickers", placeholder="NVDA, AMD, GOOG", help="Max 5 tickers.")
     filter_keywords = st.text_input("🔍 Search Keywords", placeholder="e.g. earnings, merger, layoff", help="Catch variations using fuzzy matching.")
     
-    timeframe = st.selectbox("Time Range", 
-                           options=[1, 3, 7, 30, 60, 90, 120, 150, 180], 
+    timeframe = st.select_slider("Time Range",
+                           options=[1, 3, 7, 30, 60, 90, 120, 150, 180, 270, 365],
                            format_func=lambda x: {
                                1: "Last 24 Hours", 3: "Last 3 Days", 7: "Last Week",
                                30: "Last Month", 60: "Last 2 Months", 90: "Last Quarter",
-                               120: "Last 4 Months", 150: "Last 5 Months", 180: "Last 6 Months"
+                               120: "Last 4 Months", 150: "Last 5 Months", 180: "Last 6 Months",
+                               270: "Last 9 Months", 365: "Last Year"
                            }.get(x),
                            index=2)
     
@@ -43,6 +45,53 @@ with st.sidebar:
                                   default=["Official IR", "Yahoo/Aggregate", "Reddit/WSB"])
     
     scan_clicked = st.button("🚀 Launch Scan", use_container_width=True)
+
+    st.divider()
+    st.subheader("🔐 Access EDGAR SEC Filings via API Keys")
+    edgar_api_key = st.text_input("SEC-API.io Key", type="password", help="Get a free key at https://sec-api.io to unlock EDGAR filings.")
+    if edgar_api_key:
+        edgar_api_key = edgar_api_key.strip()  # Clean the key after input
+    
+    with st.expander("❓ How to get a Key"):
+        st.markdown("""
+        1. Go to **[sec-api.io](https://sec-api.io)**
+        2. Sign up for a **Free Plan** (no credit card).
+        3. Copy your API Key from the dashboard.
+        4. Paste it above to see filing links!
+        """)
+    
+    if edgar_api_key:
+        if st.button("🔌 Test API Connection"):
+            with st.spinner("Testing key..."):
+                try:
+                    test_url = f"https://api.sec-api.io?token={edgar_api_key}"
+                    test_payload = {
+                        "query": { "query_string": { "query": "ticker:AAPL" } },
+                        "from": "0", "size": "1"
+                    }
+                    r = requests.post(test_url, json=test_payload, timeout=5)
+                    if r.status_code == 200:
+                        data = r.json()
+                        total = data.get('total', {}).get('value', 0) if isinstance(data.get('total'), dict) else data.get('total', 0)
+                        st.success(f"✅ Connected! Found {total} AAPL filings.")
+                    else:
+                        st.error(f"❌ API Error {r.status_code}: {r.text[:200]}")
+                except Exception as e:
+                    st.error(f"❌ Connection Failed: {e}")
+    
+    # SEC Filing Type Filter
+    if edgar_api_key:
+        st.divider()
+        st.subheader("📋 SEC Filing Filters")
+        filing_types = st.multiselect(
+            "Form Types to Show",
+            options=["10-K", "10-Q", "8-K", "4", "S-1", "S-3", "13F", "DEF 14A", "424B5", "All"],
+            default=["All"],
+            help="Filter SEC filings by form type. Select 'All' to show everything."
+        )
+        # Convert "All" to empty list (show all)
+        if "All" in filing_types or not filing_types:
+            filing_types = []
 
     st.divider()
     st.subheader("⚙️ Settings")
@@ -61,19 +110,28 @@ if scan_clicked:
         for idx, ticker in enumerate(tickers_list):
             with cols[idx]:
                 st.markdown(f"### 📊 {ticker}")
-                with st.status(f"Hunting {ticker}...", expanded=False) as status:
+                # Data containers
+                news = []
+                filings = []
+                
+                # --- PHASE 1: Data Gathering (Status Bar) ---
+                with st.status(f"Hunting {ticker}...", expanded=True) as status:
+                    # 1. Find IR Page
+                    st.write("🔎 Locating Official IR Page...")
                     url = scout.find_ir_page(ticker)
+                    
                     if not url:
-                        st.error(f"Discovery Failed")
+                        st.error("Discovery Failed")
                         status.update(label=f"❌ {ticker} Failed", state="error")
                         continue
                     
-                    news = scout.get_news(url, ticker, days_lookback=timeframe)
+                    # 2. Fetch News
+                    st.write(f"🦅 Scanning sources for news ({timeframe} days)...")
+                    raw_news = scout.get_news(url, ticker, days_lookback=timeframe)
                     
-                    # Apply Source Filter
-                    filtered_news = [n for n in news if n.get('source') in source_filters]
+                    # 3. Filter News
+                    filtered_news = [n for n in raw_news if n.get('source') in source_filters]
                     
-                    # Apply Keyword Fuzzy Filter
                     if filter_keywords and filtered_news:
                         from rapidfuzz import process, fuzz
                         keywords = [k.strip().lower() for k in filter_keywords.split(",") if k.strip()]
@@ -81,28 +139,55 @@ if scan_clicked:
                         final_filtered = []
                         for item in filtered_news:
                             headline = item['headline'].lower()
-                            # Check each keyword against the headline
                             is_match = False
                             for kw in keywords:
-                                # Simple ratio check for typo tolerance
-                                score = fuzz.partial_ratio(kw, headline)
-                                if score >= match_threshold:
+                                if fuzz.partial_ratio(kw, headline) >= match_threshold:
                                     is_match = True
                                     break
                             if is_match:
                                 final_filtered.append(item)
-                        filtered_news = final_filtered
-                    
-                    if not filtered_news:
-                        st.warning("No matches found.")
-                        status.update(label=f"⚠️ {ticker}: No news", state="complete")
+                        news = final_filtered
                     else:
-                        for item in filtered_news:
-                            with st.container(border=True):
-                                st.caption(f"{item['date']} • {item['source']}")
-                                st.markdown(f"**[{item['headline']}]({item['link']})**")
+                        news = filtered_news
+
+                    # 4. Fetch Filings (if key present)
+                    if edgar_api_key:
+                        st.write("🏛️ Fetching Official SEC Filings...")
+                        filings = scout.search_edgar_filings(ticker, edgar_api_key)
+                    
+                    status.update(label=f"✅ {ticker}: Ready", state="complete", expanded=False)
+
+                # --- PHASE 2: Display Results ---
+                
+                # SECTION: OFFICIAL FILINGS (High Priority)
+                if edgar_api_key:
+                    st.subheader("🏛️ SEC Filings", divider="blue")
+                    if filings:
+                        # Apply filing type filter
+                        filtered_filings = filings
+                        if filing_types:  # If specific types selected (not "All")
+                            filtered_filings = [f for f in filings if f['type'] in filing_types]
                         
-                        status.update(label=f"✅ {ticker}: Found {len(filtered_news)}", state="complete")
+                        if filtered_filings:
+                            for f in filtered_filings:
+                                st.markdown(f"""
+                                **{f['date']}** • `{f['type']}`  
+                                [{f['description']}]({f['link']})
+                                """)
+                        else:
+                            st.caption(f"No filings found matching selected types: {', '.join(filing_types)}")
+                    else:
+                        st.caption("No recent filings found.")
+
+                # SECTION: NEWS
+                st.subheader("📰 Latest News", divider="gray")
+                if not news:
+                    st.warning("No matches found.")
+                else:
+                    for item in news:
+                        with st.container(border=True):
+                            st.caption(f"{item['date']} • {item['source']}")
+                            st.markdown(f"**[{item['headline']}]({item['link']})**")
 
 # Footer
 st.markdown("""

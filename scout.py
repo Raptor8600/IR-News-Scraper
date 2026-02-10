@@ -185,3 +185,68 @@ def get_news(url, ticker, days_lookback=7, recursive=True):
 
     unique_results.sort(key=lambda x: x['date'], reverse=True)
     return unique_results[:100]
+
+def search_edgar_filings(ticker, api_key, limit=5):
+    """
+    Fetches recent EDGAR filings for a ticker using sec-api.io.
+    Requires a valid API key.
+    """
+    if not api_key:
+        return []
+    
+    # Clean ticker input
+    ticker = ticker.strip().upper()
+    
+    # Handle explicit mapping for known separators
+    search_ticker = ticker.replace(".", "-")
+    
+    url = f"https://api.sec-api.io?token={api_key}"
+
+    # Try 1: Specific Ticker Search (e.g. "ticker:AAPL")
+    query = f"ticker:{search_ticker}"
+    
+    payload = {
+        "query": { "query_string": { "query": query } },
+        "from": "0",
+        "size": str(limit),
+        "sort": [{ "filedAt": { "order": "desc" } }]
+    }
+
+    try:
+        response = requests.post(url, json=payload, timeout=5)
+        
+        # If the first search yields nothing (e.g. user searched GOOG but needed GOOGL and map didn't catch it), try fallback
+        if response.status_code == 200:
+            data = response.json()
+            total = data.get('total', {}).get('value', 0) if isinstance(data.get('total'), dict) else data.get('total', 0)
+            
+            # If 0 results, maybe we need to try adding "L" for Alphabet or just generally handle 0 results gracefully
+            if total == 0 and "GOOG" in ticker and not ticker.endswith("L"):
+                 query = "ticker:GOOGL"
+                 payload["query"]["query_string"]["query"] = query
+                 response = requests.post(url, json=payload, timeout=5)
+                 data = response.json()
+                 total = data.get('total', {}).get('value', 0) if isinstance(data.get('total'), dict) else data.get('total', 0)
+
+            filings = []
+            for f in data.get('filings', []):
+                filed_at = f.get('filedAt', '')
+                try:
+                    # Extract just YYYY-MM-DD
+                    date_str = filed_at[:10]
+                except:
+                    date_str = filed_at
+                
+                filings.append({
+                    'date': date_str,
+                    'type': f.get('formType', 'Unknown'),
+                    'description': f.get('description', ''),
+                    'link': f.get('linkToFilingDetails', '')
+                })
+            return filings
+        else:
+            logger.error(f"SEC-API.io Error {response.status_code}: {response.text}")
+    except Exception as e:
+        logger.error(f"Failed to fetch EDGAR filings for {ticker}: {e}")
+    
+    return []

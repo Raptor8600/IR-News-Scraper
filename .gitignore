@@ -1,0 +1,20 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+.DS_Store
+
+# Streamlit
+.streamlit/
+config.toml
+
+# Virtual Environment
+venv/
+env/
+
+# Debug and Test Files
+debug_*.py
+test_*.py
+*_test.py
