@@ -30,14 +30,16 @@ with st.sidebar:
     tickers_input = st.text_input("🎯 Target Tickers", placeholder="NVDA, AMD, GOOG", help="Max 5 tickers.")
     filter_keywords = st.text_input("🔍 Search Keywords", placeholder="e.g. earnings, merger, layoff", help="Catch variations using fuzzy matching.")
     
-    timeframe = st.select_slider("Time Range",
-                           options=[1, 3, 7, 30, 60, 90, 120, 150, 180, 270, 365],
-                           format_func=lambda x: {
-                               1: "Last 24 Hours", 3: "Last 3 Days", 7: "Last Week",
-                               30: "Last Month", 60: "Last 2 Months", 90: "Last Quarter",
-                               120: "Last 4 Months", 150: "Last 5 Months", 180: "Last 6 Months",
-                               270: "Last 9 Months", 365: "Last Year"
-                           }.get(x),
+    timeframe_options = {
+        1: "Last 24 Hours", 3: "Last 3 Days", 7: "Last Week",
+        30: "Last Month", 60: "Last 2 Months", 90: "Last Quarter",
+        120: "Last 4 Months", 150: "Last 5 Months", 180: "Last 6 Months",
+        270: "Last 9 Months", 365: "Last Year"
+    }
+    
+    timeframe = st.selectbox("Time Range",
+                           options=list(timeframe_options.keys()),
+                           format_func=lambda x: timeframe_options.get(x),
                            index=2)
     
     source_filters = st.multiselect("Source Filter", 
