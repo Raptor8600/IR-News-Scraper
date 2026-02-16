@@ -1,0 +1,22 @@
+{
+    "NVDA": "https://nvidianews.nvidia.com/",
+    "TSLA": "https://ir.tesla.com",
+    "AAPL": "https://www.apple.com/newsroom/",
+    "AMZN": "https://ir.aboutamazon.com",
+    "MSFT": "https://www.microsoft.com/en-us/investor",
+    "META": "https://investor.fb.com",
+    "GOOG": "https://abc.xyz/investor",
+    "GOOGL": "https://abc.xyz/investor",
+    "AMD": "https://ir.amd.com",
+    "GME": "https://news.gamestop.com/",
+    "PETV": "https://www.petv.com/investors/",
+    "PLTR": "https://investors.palantir.com",
+    "SOFI": "https://investors.sofi.com",
+    "RKLB": "https://investors.rocketlabusa.com",
+    "OPEN": "https://www.google.com/search?q=OPEN+investor+relations+news",
+    "IONQ": "https://investors.ionq.com",
+    "GOAT": "https://www.google.com/search?q=GOAT+investor+relations+news",
+    "MTVA": "https://www.google.com/search?q=MTVA+investor+relations+news",
+    "GOAT.CN": "https://www.google.com/search?q=GOAT.CN+investor+relations+news",
+    "PROP": "https://www.google.com/search?q=PROP+investor+relations+news"
+}

@@ -106,6 +106,10 @@ if scan_clicked:
     else:
         tickers_list = [t.strip().upper() for t in tickers_input.split(",") if t.strip()][:5]
         
+        # Master Data Storage
+        all_results = {"news": [], "filings": []}
+        summary_container = st.empty()
+        
         # Create columns for tickers
         cols = st.columns(len(tickers_list))
         
@@ -152,14 +156,20 @@ if scan_clicked:
                     else:
                         news = filtered_news
 
-                    # 4. Fetch Filings (if key present)
                     if edgar_api_key:
                         st.write("🏛️ Fetching Official SEC Filings...")
                         filings = scout.search_edgar_filings(ticker, edgar_api_key)
                     
+                    # Store for master summary
+                    all_results["news"].extend(news)
+                    all_results["filings"].extend(filings)
+
                     status.update(label=f"✅ {ticker}: Ready", state="complete", expanded=False)
 
                 # --- PHASE 2: Display Results ---
+                ticker_summary = scout.generate_summary(news, filings)
+                if ticker_summary:
+                    st.info(f"⚖️ **{ticker} Glance:** {ticker_summary.replace('**', '')}")
                 
                 # SECTION: OFFICIAL FILINGS (High Priority)
                 if edgar_api_key:
@@ -190,6 +200,17 @@ if scan_clicked:
                         with st.container(border=True):
                             st.caption(f"{item['date']} • {item['source']}")
                             st.markdown(f"**[{item['headline']}]({item['link']})**")
+
+        # --- PHASE 3: Master Summary ---
+        if len(tickers_list) > 1:
+            master_summary = scout.generate_summary(all_results["news"], all_results["filings"])
+            if master_summary:
+                summary_container.markdown(f"""
+                <div style="background-color: #1e293b; padding: 15px; border-radius: 10px; border-left: 5px solid #3b82f6; margin-bottom: 25px;">
+                    <h3 style="margin-top: 0; color: #60a5fa;">🦅 Market Glance (All Tickers)</h3>
+                    <p style="font-size: 1.1rem; margin-bottom: 0;">{master_summary.replace('**', '')}</p>
+                </div>
+                """, unsafe_allow_html=True)
 
 # Footer
 st.markdown("""
