@@ -1,5 +1,6 @@
 
 import requests
+import warnings
 from bs4 import BeautifulSoup
 from googlesearch import search
 import dateparser
