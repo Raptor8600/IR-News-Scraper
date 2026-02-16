@@ -17,6 +17,13 @@ LAST_GOOGLE_SEARCH = 0
 
 import json
 import os
+from bs4 import XMLParsedAsHTMLWarning
+import urllib3
+
+# Suppress annoying console warnings
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
 CACHE_FILE = "ticker_cache.json"
 
@@ -27,7 +34,8 @@ def load_cache():
         try:
             with open(CACHE_FILE, 'r') as f:
                 return json.load(f)
-        except: return {}
+        except (json.JSONDecodeError, IOError):
+            return {}
     return {}
 
 def save_cache(cache):
@@ -139,9 +147,11 @@ def find_ir_page(ticker):
             logger.warning(f"⚠️ Performing Google Search for {ticker} IR page (Rate Limit Risk)")
             
             query = f"{ticker} investor relations news"
-            for result in search(query, num=1, stop=1, pause=5):
+            # Updated to match current googlesearch-python API
+            search_results = search(query, num_results=3)
+            for result in search_results:
                 url_str = result.url if hasattr(result, 'url') else result
-                if url_str: 
+                if url_str and "google.com" not in url_str: 
                     found_url = url_str
                     break
         except Exception as e:
@@ -360,21 +370,17 @@ def generate_summary(news_items, filing_items=[]):
     # Process News
     for item in news_items:
         text = item.get('headline', '').lower()
-        matched = False
         for cat, keywords in categories.items():
             if any(kw in text for kw in keywords):
                 counts[cat] += 1
-                matched = True
                 break 
     
     # Process Filings
     for f in filing_items:
         text = (f.get('type', '') + " " + f.get('description', '')).lower()
-        matched = False
         for cat, keywords in categories.items():
             if any(kw in text for kw in keywords):
                 counts[cat] += 1
-                matched = True
                 break
                 
     # Build summary string
