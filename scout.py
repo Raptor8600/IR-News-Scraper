@@ -6,16 +6,59 @@ import dateparser
 import re
 from datetime import datetime, timedelta, timezone
 import logging
+import random
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("IRScraper")
 
+LAST_GOOGLE_SEARCH = 0
+
+import json
+import os
+
+CACHE_FILE = "ticker_cache.json"
+
+USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+
+def load_cache():
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, 'r') as f:
+                return json.load(f)
+        except: return {}
+    return {}
+
+def save_cache(cache):
+    try:
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(cache, f, indent=4)
+    except: pass
+
+# Global cache loaded in memory
+TICKER_CACHE = load_cache()
+
+def _check_url(url):
+    """Helper to check if a URL is reachable."""
+    try:
+        headers = {'User-Agent': USER_AGENT}
+        if requests.get(url, headers=headers, timeout=5, verify=False).status_code < 400:
+            return url
+    except:
+        pass
+    return None
+
 def find_ir_page(ticker):
     """
-    Robustly finds the Investor Relations page for any given ticker.
+    Robustly finds the Investor Relations page for any given ticker, with Caching and Parallel Lookups.
     """
     ticker = ticker.upper()
+    
+    # 1. Check Memory Cache first
+    if ticker in TICKER_CACHE:
+        return TICKER_CACHE[ticker]
+
     ticker_map = {
         "NVDA": "https://nvidianews.nvidia.com/",
         "TSLA": "https://ir.tesla.com",
@@ -27,13 +70,31 @@ def find_ir_page(ticker):
         "GOOGL": "https://abc.xyz/investor",
         "AMD": "https://ir.amd.com",
         "GME": "https://news.gamestop.com/",
-        "PETV": "https://www.petv.com/investors/"
+        "PETV": "https://www.petv.com/investors/",
+        "PLTR": "https://investors.palantir.com",
+        "SOFI": "https://investors.sofi.com",
+        "RKLB": "https://investors.rocketlabusa.com"
     }
     
     if ticker in ticker_map:
-        return ticker_map[ticker]
+        url = ticker_map[ticker]
+        TICKER_CACHE[ticker] = url
+        save_cache(TICKER_CACHE)
+        return url
 
-    logger.info(f"Looking up official domain for {ticker} via Yahoo...")
+    logger.info(f"Looking up official domain for {ticker} via Parallel Discovery...")
+    found_url = None
+
+    # Parallel Phase 1: Try Yahoo lookup AND common domain guesses
+    domain = ticker.lower() + ".com"
+    potential_urls = [
+        f"https://investor.{domain}", 
+        f"https://ir.{domain}", 
+        f"https://investors.{domain}"
+    ]
+    
+    # Add Yahoo Profile as a source for the base URL
+    base_url_from_yahoo = None
     try:
         y_url = f"https://finance.yahoo.com/quote/{ticker}/profile"
         headers = {'User-Agent': 'Mozilla/5.0'}
@@ -43,40 +104,66 @@ def find_ir_page(ticker):
             for a in soup.find_all('a'):
                 href = a.get('href', '')
                 if 'http' in href and not any(x in href for x in ['yahoo.com', 'google.com', 'twitter.com']):
-                    base_url = href.rstrip('/')
+                    base_url_from_yahoo = href.rstrip('/')
+                    potential_urls.append(base_url_from_yahoo)
+                    # Add common IR paths for the Yahoo discovered domain
                     ir_paths = ["/investors", "/ir", "/investor-relations", "/newsroom"]
                     for path in ir_paths:
-                        test_url = base_url + path
-                        try:
-                            if requests.get(test_url, timeout=3, verify=False).status_code < 400:
-                                return test_url
-                        except: continue
-                    return base_url
+                        potential_urls.append(base_url_from_yahoo + path)
+                    break
     except Exception as e:
         logger.error(f"Yahoo domain lookup failed for {ticker}: {e}")
 
-    domain = ticker.lower() + ".com"
-    guesses = [f"https://investor.{domain}", f"https://ir.{domain}", f"https://investors.{domain}"]
-    for url in guesses:
+    # Test all potential URLs in parallel, but LIMITED to 3 workers to avoid VPN crash
+    # Also added a small delay logic implicitly by limiting concurrency
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        results = list(executor.map(_check_url, potential_urls))
+        # Filter None and prioritize longer URLs (usually more specific like /investors)
+        valid_urls = [r for r in results if r]
+        if valid_urls:
+            # Sort by length descending to pick the most specific IR page found
+            valid_urls.sort(key=len, reverse=True)
+            found_url = valid_urls[0]
+
+    # Parallel Phase 2: Google Search Fallback (Only if Phase 1 failed)
+    if not found_url:
         try:
-            if requests.get(url, timeout=3, verify=False).status_code < 400: return url
-        except: continue
+            global LAST_GOOGLE_SEARCH
+            elapsed = time.time() - LAST_GOOGLE_SEARCH
+            if elapsed < 12: # Increased delay slightly
+                sleep_time = 12 - elapsed + random.uniform(2, 5)
+                logger.warning(f"⏳ Throttling Google Search for {sleep_time:.1f}s...")
+                time.sleep(sleep_time)
+            
+            LAST_GOOGLE_SEARCH = time.time()
+            logger.warning(f"⚠️ Performing Google Search for {ticker} IR page (Rate Limit Risk)")
+            
+            query = f"{ticker} investor relations news"
+            for result in search(query, num=1, stop=1, pause=5):
+                url_str = result.url if hasattr(result, 'url') else result
+                if url_str: 
+                    found_url = url_str
+                    break
+        except Exception as e:
+            logger.error(f"Google Search failed: {e}")
+    
+    # Absolute Fallback
+    if not found_url:
+        found_url = f"https://www.google.com/search?q={ticker}+investor+relations+news"
 
-    try:
-        query = f"{ticker} investor relations news"
-        for result in search(query):
-            url_str = result.url if hasattr(result, 'url') else result
-            if url_str: return url_str
-            break
-    except: pass
+    # Save to Cache
+    TICKER_CACHE[ticker] = found_url
+    save_cache(TICKER_CACHE)
+    logger.info(f"✅ Cached IR URL for {ticker}: {found_url}")
 
-    return f"https://www.google.com/search?q={ticker}+investor+relations+news"
+    return found_url
 
 def _fetch_yahoo(ticker, cutoff_date):
     results = []
     try:
         rss_url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker.upper()}&region=US&lang=en-US"
-        resp = requests.get(rss_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+        headers = {'User-Agent': USER_AGENT}
+        resp = requests.get(rss_url, headers=headers, timeout=5)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.content, "html.parser")
             items = soup.find_all("item")
@@ -103,7 +190,7 @@ def _fetch_reddit(ticker, cutoff_date):
     results = []
     try:
         reddit_url = f"https://www.reddit.com/r/wallstreetbets/search.rss?q={ticker}&sort=new&restrict_sr=on"
-        headers = {"User-Agent": "RaptorScraper/1.0 by TheRaptor"}
+        headers = {'User-Agent': USER_AGENT}
         resp = requests.get(reddit_url, headers=headers, timeout=5)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.content, "html.parser")
@@ -130,7 +217,7 @@ def _fetch_reddit(ticker, cutoff_date):
 def _fetch_ir(url, ticker, cutoff_date):
     results = []
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
+        headers = {'User-Agent': USER_AGENT}
         response = requests.get(url, headers=headers, timeout=5, verify=False)
         soup = BeautifulSoup(response.text, 'html.parser')
         date_regex = re.compile(r'\d{1,2},?\s+\d{4}|\b\d{4}-\d{2}-\d{2}\b', re.I)
@@ -250,3 +337,51 @@ def search_edgar_filings(ticker, api_key, limit=5):
         logger.error(f"Failed to fetch EDGAR filings for {ticker}: {e}")
     
     return []
+
+def generate_summary(news_items, filing_items=[]):
+    """
+    Generates a concise, rule-based summary of news and filings based on title keywords.
+    """
+    categories = {
+        "Financials": ["earnings", "quarterly", "result", "revenue", "eps", "fiscal", "profit", "loss", "income"],
+        "Dividends": ["dividend", "yield", "distribution", "payout"],
+        "Strategic": ["merger", "acquisition", "m&a", "purchase", "divestiture", "partnership", "alliance", "deal", "agreement"],
+        "Operations": ["expansion", "hiring", "layoff", "facility", "manufacturing", "launch", "product"],
+        "Regulatory": ["sec", "filing", "10-k", "10-q", "8-k", "litigation", "settlement", "audit", "non-compliance", "edgar"],
+        "Equity": ["buyback", "offering", "share", "stock", "split", "warrants", "capital", "shelf"]
+    }
+    
+    counts = {cat: 0 for cat in categories}
+    total_items = len(news_items) + len(filing_items)
+    
+    if total_items == 0:
+        return ""
+
+    # Process News
+    for item in news_items:
+        text = item.get('headline', '').lower()
+        matched = False
+        for cat, keywords in categories.items():
+            if any(kw in text for kw in keywords):
+                counts[cat] += 1
+                matched = True
+                break 
+    
+    # Process Filings
+    for f in filing_items:
+        text = (f.get('type', '') + " " + f.get('description', '')).lower()
+        matched = False
+        for cat, keywords in categories.items():
+            if any(kw in text for kw in keywords):
+                counts[cat] += 1
+                matched = True
+                break
+                
+    # Build summary string
+    active_cats = [f"{count} {cat}" for cat, count in counts.items() if count > 0]
+    
+    if not active_cats:
+        return f"{total_items} News Updates"
+        
+    summary = " | ".join(active_cats)
+    return summary
